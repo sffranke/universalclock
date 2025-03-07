@@ -1,4 +1,4 @@
-import network, ntptime, socket, os, time, machine
+import network, ntptime, socket, os, time, machine, math, random
 from neopixel import Neopixel
 
 # ----------------------- Neopixel Setup -----------------------------
@@ -7,7 +7,7 @@ pin = 1                   # z.B. GP2 des Pico W
 pixels = Neopixel(anzahl_LEDs, 1, pin)
 
 # Helligkeit: 10%
-brightness = 0.1
+brightness = 0.05
 base_color = (0, 0, 100)  # (g, r, b) – Basisfarbe für den Zeitteil
 text_farbe = (
     int(base_color[0] * brightness),
@@ -43,7 +43,7 @@ letters = {
     "E": [[1,1,1],[1,0,0],[1,1,1],[1,0,0],[1,1,1]],
     "B": [[1,1,0],[1,0,1],[1,1,0],[1,0,1],[1,1,0]],
     "D": [[1,1,0],[1,0,1],[1,0,1],[1,0,1],[1,1,0]],
-    "!": [[0,1,0],[0,1,0],[0,1,0],[0,0,0],[0,1,0]],
+    "!": [[1],[1],[1],[0],[1]],
     " ": [[0],[0],[0],[0],[0]]
 }
 
@@ -60,6 +60,12 @@ upper_symbols = {
     ]
 }
 
+# ----------------------- Globale Variablen für Herz-Animation -----------------------------
+heart_anim_x = 0          # x-Offset des animierten Herzens
+heart_anim_y_offset = 1   # Basis y-Position, die zufällig ±1 wechselt (zwischen 0 und 2)
+heart_anim_angle = 0      # aktueller Rotationswinkel in Grad (nur 45°-Schritte)
+last_heart_update = 0     # Zeitstempel der letzten Herz-Aktualisierung
+
 # ----------------------- Mapping-Funktion -----------------------------
 def set_pixel(x, y, farbe):
     # Serpentine-Mapping: In geraden Zeilen (y % 2 == 0) läuft die Reihe von rechts nach links.
@@ -68,6 +74,11 @@ def set_pixel(x, y, farbe):
     else:
         index = y * 16 + x
     pixels.set_pixel(index, farbe)
+
+def clear_all():
+    for i in range(9*16):
+        pixels.set_pixel(i, (0,0,0))
+    pixels.show()
 
 # ----------------------- Hilfsfunktionen für Text ------------------------
 def create_text_matrix(text, font_dict, spacing=1, value=1):
@@ -117,25 +128,73 @@ def zeichne_symbol(symbol, start_x, start_y):
                 set_pixel(start_x + x, start_y + y, (0,0,0))
     pixels.show()
 
-# ----------------------- Anzeige im oberen Bereich (Herz) -----------------------
-def display_upper_heart():
-    """Zeigt ein zentriertes Herz (7×7) in der oberen Hälfte an."""
+# ----------------------- Herz-Animation -----------------------------
+def rotate_matrix(matrix, angle):
+    """
+    Dreht eine 2D-Matrix (Liste von Listen) um den angegebenen Winkel in Grad.
+    Es wird mit nearest-neighbor gearbeitet, sodass die Rückgabe dieselbe Dimension hat.
+    """
+    height = len(matrix)
+    width = len(matrix[0])
+    new_matrix = [[0 for _ in range(width)] for _ in range(height)]
+    cx = (width - 1) / 2.0
+    cy = (height - 1) / 2.0
+    rad = math.radians(angle)
+    cos_val = math.cos(rad)
+    sin_val = math.sin(rad)
+    for y in range(height):
+        for x in range(width):
+            dx = x - cx
+            dy = y - cy
+            src_x =  dx * cos_val + dy * sin_val + cx
+            src_y = -dx * sin_val + dy * cos_val + cy
+            src_x_round = int(round(src_x))
+            src_y_round = int(round(src_y))
+            if 0 <= src_x_round < width and 0 <= src_y_round < height:
+                new_matrix[y][x] = matrix[src_y_round][src_x_round]
+            else:
+                new_matrix[y][x] = 0
+    return new_matrix
+
+def display_upper_heart_anim():
+    """
+    Zeigt das animierte Herz im oberen Bereich.
+    Das Herz wird in x-Richtung um 4 Pixel verschoben,
+    rotiert in 45°-Schritten und erhält zusätzlich einen zufälligen y-Versatz von ±1 Pixel.
+    """
+    global heart_anim_x, heart_anim_y_offset, heart_anim_angle
     heart = upper_symbols["♥"]
-    heart_color = (0, int(255 * brightness), 0)  # Reines Rot (GRB: (0,255,0))
-    start_x = (16 - 7) // 2  # 4
-    start_y = 1              # leicht nach unten
+    rotated_heart = rotate_matrix(heart, heart_anim_angle)
+    heart_color = (0, int(255 * brightness), 0)
+    # Lösche den Bereich, in dem das Herz dargestellt wird
+    for y in range(heart_anim_y_offset, heart_anim_y_offset + 7):
+        for x in range(16):
+            set_pixel(x, y, (0,0,0))
+    # Zeichne das rotierte Herz an der aktuellen x- und y-Position
     for y in range(7):
         for x in range(7):
-            if heart[y][x] == 1:
-                set_pixel(start_x + x, start_y + y, heart_color)
-            else:
-                set_pixel(start_x + x, start_y + y, (0,0,0))
+            pos_x = heart_anim_x + x
+            pos_y = heart_anim_y_offset + y
+            if 0 <= pos_x < 16 and pos_y < 16:
+                if rotated_heart[y][x] == 1:
+                    set_pixel(pos_x, pos_y, heart_color)
     pixels.show()
+    # Aktualisiere die Animationsparameter:
+    heart_anim_x += 4
+    if heart_anim_x > 16 - 7:
+        heart_anim_x = 0
+    heart_anim_angle = (heart_anim_angle + 45) % 360
+    # y-Versatz: zufällig um -1, 0 oder +1 ändern, dabei zwischen 0 und 2 clampen
+    heart_anim_y_offset += random.choice([-1, 0, 1])
+    if heart_anim_y_offset < 0:
+        heart_anim_y_offset = 0
+    elif heart_anim_y_offset > 2:
+        heart_anim_y_offset = 2
 
-# ----------------------- Anzeige im unteren Bereich (statisch) -----------------------
+# ----------------------- Anzeige im unteren Bereich -----------------------
 def display_lower_static():
     """Zeigt die Uhrzeit statisch im Format 'HHMM' an (Stunden links, Minuten rechts)."""
-    t = time.localtime()
+    t = get_local_time()  # Verwende die lokale Zeit inkl. DST
     stunde = t[3] if t[3] != 0 else 12
     if stunde > 12:
         stunde -= 12
@@ -152,25 +211,23 @@ def display_lower_static():
         zeichne_symbol(ziffern[ch], start_x + x_offset + 1, y_offset)
         x_offset += 4
 
-# ----------------------- Anzeige im unteren Bereich (einmaliger Scroll-Durchlauf) -----------------------
 def display_lower_scrolling_once():
     """
     Führt einen einmaligen kompletten Laufschriftdurchlauf durch,
     bestehend aus der Uhrzeit im Format "HH:MM" (Wert 1)
-    und dem Text " ICH LIEBE DICH <3" (Wert 2).
+    und dem Text " ICH LIEBE DICH !" (Wert 2).
     """
-    t = time.localtime()
+    t = get_local_time()  # Verwende die lokale Zeit inkl. DST
     stunde = t[3] if t[3] != 0 else 12
     if stunde > 12:
         stunde -= 12
     time_str = "{:02d}:{:02d}".format(stunde, t[4])
     time_matrix = create_text_matrix(time_str, ziffern, spacing=1, value=1)
-    appended_text = " ICH LIEBE DICH <3"
+    appended_text = " ICH LIEBE DICH !"
     appended_matrix = create_text_matrix(appended_text, letters, spacing=1, value=2)
     combined_matrix = combine_matrices(time_matrix, appended_matrix, spacing=1)
     text_width = len(combined_matrix[0])
     y_offset = 8 + ((8 - 5) // 2)
-    # Scroll von rechts (offset = -16) bis der Text komplett links verschwunden ist
     for offset in range(-16, text_width + 1):
         display_text_window(combined_matrix, offset, y_offset, 16)
         time.sleep(0.1)
@@ -198,16 +255,9 @@ def connect_wifi(ssid, password):
 
 def start_ap():
     """Startet einen Hotspot (AP-Modus) für die Konfiguration."""
-    # WAP-Betrieb
     wap = network.WLAN(network.AP_IF)
-
-    # WAP-Konfiguration
     wap.config(essid='PicoSetup', password='12345678')
-
-    # WLAN-Interface aktivieren
     wap.active(True)
-
-    # Ausgabe der Netzwerk-Konfiguration
     print(wap.ifconfig())
     return wap
 
@@ -223,7 +273,6 @@ def serve_config_page():
         print('Client connected from', addr)
         request = cl.recv(1024).decode()
         if request:
-            # Einfache Auswertung des GET-Requests:
             if "GET /set?" in request:
                 try:
                     qs = request.split("GET /set?", 1)[1].split(" ", 1)[0]
@@ -238,7 +287,6 @@ def serve_config_page():
                             password = v
                     ssid = ssid.replace('+', ' ')
                     password = password.replace('+', ' ')
-                    # Speichere die Zugangsdaten:
                     with open("credentials.txt", "w") as f:
                         f.write(ssid + "\n" + password + "\n")
                     response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" \
@@ -251,7 +299,6 @@ def serve_config_page():
                 except Exception as e:
                     print("Fehler beim Verarbeiten:", e)
             else:
-                # Sende Konfigurationsseite:
                 html = """HTTP/1.1 200 OK\r
 Content-Type: text/html\r
 Connection: close\r
@@ -328,8 +375,45 @@ Connection: close\r
                 cl.close()
     return
 
+# ----------------------- DST- und Zeitfunktionen -----------------------------
+def day_of_week(year, month, day):
+    t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
+    if month < 3:
+        year -= 1
+    return (year + year//4 - year//100 + year//400 + t[month-1] + day) % 7
+
+def last_sunday(year, month):
+    day = 31
+    while day_of_week(year, month, day) != 0:
+        day -= 1
+    return day
+
+def is_dst(t):
+    year, month, day, hour = t[0], t[1], t[2], t[3]
+    if month < 3 or month > 10:
+        return False
+    elif 4 <= month <= 9:
+        return True
+    elif month == 3:
+        dst_start_day = last_sunday(year, 3)
+        return day > dst_start_day or (day == dst_start_day and hour >= 2)
+    elif month == 10:
+        dst_end_day = last_sunday(year, 10)
+        return not (day < dst_end_day or (day == dst_end_day and hour < 3))
+
+def get_local_standard_time():
+    return time.localtime(time.time() + 3600)
+
+def get_local_time():
+    t_std = get_local_standard_time()
+    if is_dst(t_std):
+        return time.localtime(time.time() + 7200)
+    else:
+        return t_std
+
 # ----------------------- Main -----------------------------
 def main():
+    global last_heart_update
     if "credentials.txt" in os.listdir():
         with open("credentials.txt", "r") as f:
             lines = f.readlines()
@@ -343,26 +427,26 @@ def main():
                 print("Zeit gesetzt:", time.localtime())
             except Exception as e:
                 print("Fehler beim Einstellen der Zeit:", e)
-            # Nun starte den Uhr-Display-Modus
             last_minute = None
             while True:
-                t = time.localtime()
+                if time.time() - last_heart_update >= 0.5:
+                    clear_all()
+                    display_upper_heart_anim()
+                    last_heart_update = time.time()
+                t = get_local_time()
                 current_minute = t[4]
-                display_upper_heart()
                 if current_minute != last_minute:
                     display_lower_scrolling_once()
                     last_minute = current_minute
                 else:
                     display_lower_static()
-                time.sleep(0.1)
+                time.sleep(0.01)
         else:
             print("WLAN-Verbindung fehlgeschlagen.")
     else:
         print("credentials.txt nicht gefunden. Starte Hotspot für WLAN-Konfiguration...")
         start_ap()
         serve_config_page()
-        # Nach erfolgreicher Konfiguration muss der Pico neu gestartet werden.
         machine.reset()
 
 main()
-
