@@ -13,24 +13,29 @@ frame = [(0, 0, 0) for _ in range(anzahl_LEDs)]
 # ----------------------- Einstellungen -----------------------------
 brightness = 0.05
 base_color = (0, 0, 100)  # Basisfarbe (für den Zeitteil)
+# text_farbe wird z.B. in der unteren Zeitanzeige genutzt; für den oberen Text definieren wir eine eigene Farbe.
 text_farbe = ( int(base_color[0]*brightness),
                int(base_color[1]*brightness),
                int(base_color[2]*brightness) )
 red_text = (0, int(255*brightness), 0)
+# Farbe für den oberen Text: immer grün
+upper_text_color = (0, int(255*brightness), 0)
 
 # Obere Animation: Wähle, ob Rose oder Herz angezeigt wird.
-show_rose = True   # (Diese Variable wird am Ende jedes Zyklus umgeschaltet.)
+show_rose = True  
+# (upper_text wird nun dynamisch in der Hauptschleife gesetzt)
 
 # Farben für die Rose (Farbtausch):
-# Pixel mit Wert 1 (ursprünglich "Petals") werden grün (Blätter)
-# Pixel mit Wert 2 (ursprünglich "Leaves") werden rot (Blüten)
 rose_petals = (int(255*brightness), 0, 0)   # Rot
 rose_leaves = (0, int(255*brightness), 0)    # Grün
+
+# ----------------------- Array für zufällige Nachrichten (Laufschrift) -----------------------------
+messages = ["ICH LIEBE DICH !", "HALLO MARCIA!", "SCHÖNER TAG!", "HUHU!", "VIEL SPASS!"]
 
 # ----------------------- Font-Definitionen -----------------------------
 ziffern = {
     "0": [[1,1,1],[1,0,1],[1,0,1],[1,0,1],[1,1,1]],
-    "1": [[0,1,0],[1,1,0],[0,1,0],[0,1,0],[1,1,1]],
+    "1": [[0,1,0],[1,1,0],[0,1,0],[0,1,0],[1,1,1]],  # Standarddefinition (wird später überschrieben)
     "2": [[1,1,1],[0,0,1],[1,1,1],[1,0,0],[1,1,1]],
     "3": [[1,1,1],[0,0,1],[0,1,1],[0,0,1],[1,1,1]],
     "4": [[1,0,1],[1,0,1],[1,1,1],[0,0,1],[0,0,1]],
@@ -40,22 +45,71 @@ ziffern = {
     "8": [[1,1,1],[1,0,1],[1,1,1],[1,0,1],[1,1,1]],
     "9": [[1,1,1],[1,0,1],[1,1,1],[0,0,1],[1,1,1]],
     ":": [[0,0,0],[0,1,0],[0,0,0],[0,1,0],[0,0,0]],
-    " ": [[0,0],[0,0],[0,0],[0,0],[0,0]]
+    " ": [[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]
 }
 
 letters = {
-    "I": [[1,1,1],[0,1,0],[0,1,0],[0,1,0],[1,1,1]],
-    "C": [[1,1,1],[1,0,0],[1,0,0],[1,0,0],[1,1,1]],
-    "H": [[1,0,1],[1,0,1],[1,1,1],[1,0,1],[1,0,1]],
-    "L": [[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,1,1]],
-    "E": [[1,1,1],[1,0,0],[1,1,1],[1,0,0],[1,1,1]],
+    "A": [[0,1,0],[1,0,1],[1,1,1],[1,0,1],[1,0,1]],
     "B": [[1,1,0],[1,0,1],[1,1,0],[1,0,1],[1,1,0]],
+    "C": [[0,1,1],[1,0,0],[1,0,0],[1,0,0],[0,1,1]],
     "D": [[1,1,0],[1,0,1],[1,0,1],[1,0,1],[1,1,0]],
-    "!": [[1],[1],[1],[0],[1]],
-    " ": [[0],[0],[0],[0],[0]]
+    "E": [[1,1,1],[1,0,0],[1,1,1],[1,0,0],[1,1,1]],
+    "F": [[1,1,1],[1,0,0],[1,1,0],[1,0,0],[1,0,0]],
+    "G": [[0,1,1],[1,0,0],[1,0,1],[1,0,1],[0,1,1]],
+    "H": [[1,0,1],[1,0,1],[1,1,1],[1,0,1],[1,0,1]],
+    "I": [[1,1,1],[0,1,0],[0,1,0],[0,1,0],[1,1,1]],
+    "J": [[0,1,1],[0,0,1],[0,0,1],[1,0,1],[0,1,0]],
+    "K": [[1,0,1],[1,1,0],[1,1,0],[1,0,1],[1,0,1]],
+    "L": [[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,1,1]],
+    "M": [[1,0,1],[1,1,1],[1,0,1],[1,0,1],[1,0,1]],
+    "N": [[1,0,1],[1,1,1],[1,1,1],[1,0,1],[1,0,1]],
+    "O": [[0,1,0],[1,0,1],[1,0,1],[1,0,1],[0,1,0]],
+    "P": [[1,1,0],[1,0,1],[1,1,0],[1,0,0],[1,0,0]],
+    "Q": [[0,1,0],[1,0,1],[1,0,1],[1,1,1],[0,1,1]],
+    "R": [[1,1,0],[1,0,1],[1,1,0],[1,0,1],[1,0,1]],
+    "S": [[0,1,1],[1,0,0],[0,1,0],[0,0,1],[1,1,0]],
+    "T": [[1,1,1],[0,1,0],[0,1,0],[0,1,0],[0,1,0]],
+    "U": [[1,0,1],[1,0,1],[1,0,1],[1,0,1],[0,1,0]],
+    "V": [[1,0,1],[1,0,1],[1,0,1],[0,1,0],[0,1,0]],
+    "W": [[1,0,1],[1,0,1],[1,0,1],[1,1,1],[1,0,1]],
+    "X": [[1,0,1],[0,1,0],[0,1,0],[0,1,0],[1,0,1]],
+    "Y": [[1,0,1],[0,1,0],[0,1,0],[0,1,0],[0,1,0]],
+    "Z": [[1,1,1],[0,0,1],[0,1,0],[1,0,0],[1,1,1]],
+    " ": [[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]
 }
 
-# Obere Symbole (Herz und Rose)
+# ----------------------- Kombiniertes Font-Dictionary für den oberen Bereich -----------------------------
+upper_font = {}
+for key, matrix in letters.items():
+    upper_font[key] = matrix
+for key, matrix in ziffern.items():
+    upper_font[key] = matrix
+if "/" not in upper_font:
+    upper_font["/"] = [
+        [0,0,0],
+        [0,0,1],
+        [0,1,0],
+        [1,0,0],
+        [0,0,0]
+    ]
+# Spezielle Darstellung für "1": 2×5-Pixel (nur eine Spalte breit)
+upper_font["1"] = [
+    [1],
+    [1],
+    [1],
+    [1],
+    [1]
+]
+# Im oberen Bereich soll ein Leerzeichen nur 1x5 Pixel groß sein.
+upper_font[" "] = [
+    [0],
+    [0],
+    [0],
+    [0],
+    [0]
+]
+
+# ----------------------- Obere Symbole für die Animation -----------------------------
 upper_symbols = {
     "♥": [
         [0,1,0,0,0,1,0],
@@ -63,6 +117,15 @@ upper_symbols = {
         [1,1,1,1,1,1,1],
         [1,1,1,1,1,1,1],
         [0,1,1,1,1,1,0],
+        [0,0,1,1,1,0,0],
+        [0,0,0,1,0,0,0]
+    ],
+    "♥2": [
+        [0,1,0,0,0,1,0],
+        [1,1,1,1,1,1,1],
+        [1,1,0,0,0,1,1],
+        [1,1,0,0,0,1,1],
+        [0,1,1,0,1,1,0],
         [0,0,1,1,1,0,0],
         [0,0,0,1,0,0,0]
     ],
@@ -78,13 +141,10 @@ upper_symbols = {
 }
 
 # ----------------------- Globale Variablen für Animation -----------------------------
-# Für das Herz (animiert)
 heart_anim_x = 0
 heart_anim_y_offset = 1
 heart_anim_angle = 0
 last_heart_update = time.time()
-
-# Für die Rose (ohne Rotation, nur Farbtausch und zufällige Bewegung)
 rose_anim_x = 4
 rose_anim_y_offset = 1
 
@@ -163,6 +223,21 @@ def zeichne_symbol(symbol, start_x, start_y):
             else:
                 set_pixel_frame(start_x + x, start_y + y, (0, 0, 0))
 
+# ----------------------- Angepasste Funktion für den oberen Text -----------------------------
+def display_upper_text_frame(text):
+    text = text.upper()[:6]
+    text_matrix = create_text_matrix(text, upper_font, spacing=1, value=1)
+    text_width = len(text_matrix[0])
+    start_x = max(0, (16 - text_width) // 2)
+    y_offset = (9 - 5) // 2  # Zentriert in Zeilen 0–8
+    for row in range(5):
+        for col in range(text_width):
+            val = text_matrix[row][col]
+            if val == 1:
+                set_pixel_frame(start_x + col, y_offset + row, upper_text_color)
+            else:
+                set_pixel_frame(start_x + col, y_offset + row, (0, 0, 0))
+
 # ----------------------- Herz-Animation -----------------------------
 def rotate_matrix(matrix, angle):
     height = len(matrix)
@@ -196,7 +271,11 @@ def display_upper_heart_anim_frame():
         heart_anim_y_offset = max(0, min(heart_anim_y_offset, 2))
         heart_anim_angle = (heart_anim_angle + 45) % 360
         last_heart_update = current
-    heart = upper_symbols["♥"]
+    # Zufällig eines der beiden Herzsymbole wählen:
+    if random.choice([True, False]):
+        heart = upper_symbols["♥"]
+    else:
+        heart = upper_symbols["♥2"]
     rotated = rotate_matrix(heart, heart_anim_angle)
     heart_color = (0, int(255 * brightness), 0)
     clear_region_frame(0, heart_anim_y_offset, 16, 7)
@@ -232,9 +311,8 @@ def display_upper_rose_anim_frame():
 
 # ----------------------- Unterer Bereich: Zeitanzeige / Laufschrift -----------------------------
 def display_lower_static_frame():
-    # Zeichnet die statische Uhrzeitanzeige in den Zeilen 9–13 im 24-Stunden-Format
     t = get_local_time()
-    stunde = t[3]  # 24-Stunden-Wert direkt verwenden
+    stunde = t[3]
     stunde_str = "{:02d}".format(stunde)
     minute_str = "{:02d}".format(t[4])
     start_x = 1
@@ -415,42 +493,55 @@ def main():
             except Exception as e:
                 print("Fehler beim Einstellen der Zeit:", e)
             last_heart_update = time.time()
-            # Hauptschleife
             while True:
                 clear_frame()
-                # Aktualisiere nur den oberen Bereich (Zeilen 0–8)
                 clear_region_frame(0, 0, 16, 9)
-                if show_rose:
-                    display_upper_rose_anim_frame()
-                else:
-                    display_upper_heart_anim_frame()
-                # Prüfe, ob sich die Minute geändert hat:
+                # Dynamisch: Falls die Stunde unter 11 liegt und die Minute genau 15, 30 oder 45 beträgt,
+                # wird der spezielle Text gesetzt, ansonsten bleibt upper_text leer.
                 t = get_local_time()
+                current_hour = t[3]
                 current_minute = t[4]
+                if current_hour < 11 and current_minute in [15, 30, 45]:
+                    if current_minute == 15:
+                        dynamic_upper_text = "1/41"
+                    elif current_minute == 30:
+                        dynamic_upper_text = "1/21"
+                    elif current_minute == 45:
+                        dynamic_upper_text = "3/41"
+                else:
+                    dynamic_upper_text = ""
+                
+                if dynamic_upper_text != "":
+                    display_upper_text_frame(dynamic_upper_text)
+                else:
+                    if show_rose:
+                        display_upper_rose_anim_frame()
+                    else:
+                        display_upper_heart_anim_frame()
+                
+                # Unterer Bereich: Zeitanzeige / Laufschrift
+                current_time = get_local_time()
+                current_minute = current_time[4]
                 if last_minute is None or current_minute != last_minute:
                     lower_mode = "scrolling"
                     scroll_offset = -16
-                    # Erstelle die kombinierte Matrix für die Laufschrift
-                    time_str = "{:02d}:{:02d}".format(t[3], t[4])
+                    time_str = "{:02d}:{:02d}".format(current_time[3], current_time[4])
                     time_matrix = create_text_matrix(time_str, ziffern, spacing=1, value=1)
-                    appended_text = " ICH LIEBE DICH !"
+                    # Zufällig einen Zusatztext aus dem Array messages wählen:
+                    appended_text = " " + random.choice(messages)
                     appended_matrix = create_text_matrix(appended_text, letters, spacing=1, value=2)
                     lower_combined_matrix = combine_matrices(time_matrix, appended_matrix, spacing=1)
                     lower_scroll_max = len(lower_combined_matrix[0])
                     last_minute = current_minute
-                    show_rose = not(show_rose)
                 if lower_mode == "scrolling":
                     clear_region_frame(0, 9, 16, 5)
                     display_lower_scrolling_frame()
-                    
                 else:
                     display_lower_static_frame()
                 commit_frame()
-                time.sleep(0.1)  # ca. 30 FPS
+                time.sleep(0.1)  
                 if lower_mode == "scrolling" and scroll_offset > lower_scroll_max:
                     lower_mode = "static"
-                # Optional: Obere Animation umschalten, falls gewünscht:
-                
         else:
             print("WLAN-Verbindung fehlgeschlagen.")
     else:
