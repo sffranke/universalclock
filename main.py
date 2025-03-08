@@ -88,15 +88,6 @@ last_heart_update = time.time()
 rose_anim_x = 4
 rose_anim_y_offset = 1
 
-# Unterer Bereich:
-# use_scrolling_lower: True -> Laufschrift, False -> statische Anzeige
-use_scrolling_lower = False  
-lower_mode = "static"   # "static" oder "scrolling"
-last_minute = None      # Zur Erkennung von Minutenwechsel
-scroll_offset = -16     # Startwert für die Laufschrift
-lower_combined_matrix = None  # Kombinierte Matrix (Zeit + Zusatztext)
-lower_scroll_max = 0           # Breite der kombinierten Matrix
-
 # ----------------------- Hilfsfunktionen für Double Buffering -----------------------------
 def xy_to_index(x, y):
     if y % 2 == 0:
@@ -112,8 +103,6 @@ def set_pixel_frame(x, y, farbe):
 
 def clear_frame():
     global frame
-    # Wir löschen nicht den gesamten Frame, sondern arbeiten gezielt im oberen Bereich.
-    # Für den unteren Bereich (statisch) wird nur bei Minutenwechsel neu gezeichnet.
     frame = led_state.copy()
 
 def clear_region_frame(x0, y0, width, height):
@@ -243,11 +232,9 @@ def display_upper_rose_anim_frame():
 
 # ----------------------- Unterer Bereich: Zeitanzeige / Laufschrift -----------------------------
 def display_lower_static_frame():
-    # Zeichnet die statische Uhrzeitanzeige in den Zeilen 9–13
+    # Zeichnet die statische Uhrzeitanzeige in den Zeilen 9–13 im 24-Stunden-Format
     t = get_local_time()
-    stunde = t[3] if t[3] != 0 else 12
-    if stunde > 12:
-        stunde -= 12
+    stunde = t[3]  # 24-Stunden-Wert direkt verwenden
     stunde_str = "{:02d}".format(stunde)
     minute_str = "{:02d}".format(t[4])
     start_x = 1
@@ -269,20 +256,6 @@ def display_lower_scrolling_frame():
         scroll_offset += 1
         if scroll_offset > lower_scroll_max:
             lower_mode = "static"
-
-def update_lower_matrix():
-    global lower_combined_matrix, lower_scroll_max, scroll_offset
-    t = get_local_time()
-    stunde = t[3] if t[3] != 0 else 12
-    if stunde > 12:
-        stunde -= 12
-    time_str = "{:02d}:{:02d}".format(stunde, t[4])
-    time_matrix = create_text_matrix(time_str, ziffern, spacing=1, value=1)
-    appended_text = " ICH LIEBE DICH !"
-    appended_matrix = create_text_matrix(appended_text, letters, spacing=1, value=2)
-    lower_combined_matrix = combine_matrices(time_matrix, appended_matrix, spacing=1)
-    lower_scroll_max = len(lower_combined_matrix[0])
-    scroll_offset = -16
 
 # ----------------------- WLAN-Funktionen -----------------------------
 def connect_wifi(ssid, password):
@@ -442,7 +415,7 @@ def main():
             except Exception as e:
                 print("Fehler beim Einstellen der Zeit:", e)
             last_heart_update = time.time()
-            # Beim Minutenwechsel: aktualisiere den unteren Bereich und starte die Laufschrift
+            # Hauptschleife
             while True:
                 clear_frame()
                 # Aktualisiere nur den oberen Bereich (Zeilen 0–8)
@@ -458,24 +431,26 @@ def main():
                     lower_mode = "scrolling"
                     scroll_offset = -16
                     # Erstelle die kombinierte Matrix für die Laufschrift
-                    time_str = "{:02d}:{:02d}".format(t[3] if t[3]!=0 else 12, t[4])
+                    time_str = "{:02d}:{:02d}".format(t[3], t[4])
                     time_matrix = create_text_matrix(time_str, ziffern, spacing=1, value=1)
                     appended_text = " ICH LIEBE DICH !"
                     appended_matrix = create_text_matrix(appended_text, letters, spacing=1, value=2)
                     lower_combined_matrix = combine_matrices(time_matrix, appended_matrix, spacing=1)
                     lower_scroll_max = len(lower_combined_matrix[0])
                     last_minute = current_minute
+                    show_rose = not(show_rose)
                 if lower_mode == "scrolling":
                     clear_region_frame(0, 9, 16, 5)
                     display_lower_scrolling_frame()
+                    
                 else:
                     display_lower_static_frame()
                 commit_frame()
-                time.sleep(0.033)  # ca. 30 FPS
+                time.sleep(0.1)  # ca. 30 FPS
                 if lower_mode == "scrolling" and scroll_offset > lower_scroll_max:
                     lower_mode = "static"
                 # Optional: Obere Animation umschalten, falls gewünscht:
-                # show_rose = not(show_rose)
+                
         else:
             print("WLAN-Verbindung fehlgeschlagen.")
     else:
@@ -485,3 +460,4 @@ def main():
         machine.reset()
 
 main()
+
