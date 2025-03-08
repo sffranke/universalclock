@@ -13,29 +13,27 @@ frame = [(0, 0, 0) for _ in range(anzahl_LEDs)]
 # ----------------------- Einstellungen -----------------------------
 brightness = 0.05
 base_color = (0, 0, 100)  # Basisfarbe (für den Zeitteil)
-# text_farbe wird z.B. in der unteren Zeitanzeige genutzt; für den oberen Text definieren wir eine eigene Farbe.
 text_farbe = ( int(base_color[0]*brightness),
                int(base_color[1]*brightness),
                int(base_color[2]*brightness) )
 red_text = (0, int(255*brightness), 0)
-# Farbe für den oberen Text: immer grün
-upper_text_color = (0, int(255*brightness), 0)
+upper_text_color = (int(255*brightness), 0, 0)  # Immer grün
 
 # Obere Animation: Wähle, ob Rose oder Herz angezeigt wird.
 show_rose = True  
-# (upper_text wird nun dynamisch in der Hauptschleife gesetzt)
+# (upper_text wird dynamisch in der Hauptschleife gesetzt)
 
 # Farben für die Rose (Farbtausch):
 rose_petals = (int(255*brightness), 0, 0)   # Rot
 rose_leaves = (0, int(255*brightness), 0)    # Grün
 
 # ----------------------- Array für zufällige Nachrichten (Laufschrift) -----------------------------
-messages = ["ICH LIEBE DICH !", "HALLO MARCIA!", "SCHÖNER TAG!", "HUHU!", "VIEL SPASS!"]
+messages = ["ICH LIEBE DICH !", "HALLO WELT!", "SCHÖNER TAG!", "GUTEN MORGEN!", "VIEL SPASS!"]
 
 # ----------------------- Font-Definitionen -----------------------------
 ziffern = {
     "0": [[1,1,1],[1,0,1],[1,0,1],[1,0,1],[1,1,1]],
-    "1": [[0,1,0],[1,1,0],[0,1,0],[0,1,0],[1,1,1]],  # Standarddefinition (wird später überschrieben)
+    "1": [[0,1,0],[1,1,0],[0,1,0],[0,1,0],[1,1,1]],  # Standard (wird später überschrieben)
     "2": [[1,1,1],[0,0,1],[1,1,1],[1,0,0],[1,1,1]],
     "3": [[1,1,1],[0,0,1],[0,1,1],[0,0,1],[1,1,1]],
     "4": [[1,0,1],[1,0,1],[1,1,1],[0,0,1],[0,0,1]],
@@ -99,6 +97,20 @@ upper_font["1"] = [
     [1],
     [1],
     [1]
+]
+upper_font["3"] = [
+    [1,1],
+    [0,1],
+    [1,1],
+    [0,1],
+    [1,1]
+]
+upper_font["4"] = [
+    [1,0],
+    [1,0],
+    [1,1],
+    [0,1],
+    [0,1]
 ]
 # Im oberen Bereich soll ein Leerzeichen nur 1x5 Pixel groß sein.
 upper_font[" "] = [
@@ -496,18 +508,18 @@ def main():
             while True:
                 clear_frame()
                 clear_region_frame(0, 0, 16, 9)
-                # Dynamisch: Falls die Stunde unter 11 liegt und die Minute genau 15, 30 oder 45 beträgt,
-                # wird der spezielle Text gesetzt, ansonsten bleibt upper_text leer.
+                # Bestimme dynamisch den oberen Text basierend auf der aktuellen Zeit.
                 t = get_local_time()
-                current_hour = t[3]
+                # x als 12-Stunden-Wert: 0 bedeutet 12 AM, 1 = 1, …, 11 = 11
+                x = t[3] % 12  
                 current_minute = t[4]
-                if current_hour < 11 and current_minute in [15, 30, 45]:
+                if current_minute in [15, 30, 45] and x >= 0 and x < 12:
                     if current_minute == 15:
-                        dynamic_upper_text = "1/41"
+                        dynamic_upper_text = "1/4" + str(x+1)
                     elif current_minute == 30:
-                        dynamic_upper_text = "1/21"
+                        dynamic_upper_text = "1/2" + str(x+1)
                     elif current_minute == 45:
-                        dynamic_upper_text = "3/41"
+                        dynamic_upper_text = "3/4" + str(x+1)
                 else:
                     dynamic_upper_text = ""
                 
@@ -519,7 +531,7 @@ def main():
                     else:
                         display_upper_heart_anim_frame()
                 
-                # Unterer Bereich: Zeitanzeige / Laufschrift
+                # Unterer Bereich: Zeitanzeige / Laufschrift mit zufälliger Nachricht
                 current_time = get_local_time()
                 current_minute = current_time[4]
                 if last_minute is None or current_minute != last_minute:
@@ -527,7 +539,7 @@ def main():
                     scroll_offset = -16
                     time_str = "{:02d}:{:02d}".format(current_time[3], current_time[4])
                     time_matrix = create_text_matrix(time_str, ziffern, spacing=1, value=1)
-                    # Zufällig einen Zusatztext aus dem Array messages wählen:
+                    # Zufällig einen Zusatztext aus messages wählen
                     appended_text = " " + random.choice(messages)
                     appended_matrix = create_text_matrix(appended_text, letters, spacing=1, value=2)
                     lower_combined_matrix = combine_matrices(time_matrix, appended_matrix, spacing=1)
@@ -539,7 +551,7 @@ def main():
                 else:
                     display_lower_static_frame()
                 commit_frame()
-                time.sleep(0.1)  
+                time.sleep(0.1)
                 if lower_mode == "scrolling" and scroll_offset > lower_scroll_max:
                     lower_mode = "static"
         else:
