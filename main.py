@@ -20,7 +20,7 @@ red_text = (0, int(255*brightness), 0)
 
 # Obere Animation: Wähle, ob Rose oder Herz angezeigt wird.
 show_rose = True   # (Diese Variable wird am Ende jedes Zyklus umgeschaltet.)
-show_rose = False 
+
 # Farben für die Rose (Farbtausch):
 # Pixel mit Wert 1 (ursprünglich "Petals") werden grün (Blätter)
 # Pixel mit Wert 2 (ursprünglich "Leaves") werden rot (Blüten)
@@ -465,14 +465,13 @@ def main():
                     lower_combined_matrix = combine_matrices(time_matrix, appended_matrix, spacing=1)
                     lower_scroll_max = len(lower_combined_matrix[0])
                     last_minute = current_minute
-                    show_rose = not(show_rose)
                 if lower_mode == "scrolling":
                     clear_region_frame(0, 9, 16, 5)
                     display_lower_scrolling_frame()
                 else:
                     display_lower_static_frame()
                 commit_frame()
-                time.sleep(0.16)  # ca. 30 FPS
+                time.sleep(0.033)  # ca. 30 FPS
                 if lower_mode == "scrolling" and scroll_offset > lower_scroll_max:
                     lower_mode = "static"
                 # Optional: Obere Animation umschalten, falls gewünscht:
@@ -486,4 +485,3 @@ def main():
         machine.reset()
 
 main()
-
