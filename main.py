@@ -17,18 +17,16 @@ text_farbe = ( int(base_color[0]*brightness),
                int(base_color[1]*brightness),
                int(base_color[2]*brightness) )
 red_text = (0, int(255*brightness), 0)
-upper_text_color = (int(255*brightness), 0, 0)  # Immer grün
-
-# Obere Animation: Wähle, ob Rose oder Herz angezeigt wird.
-show_rose = True  
-# (upper_text wird dynamisch in der Hauptschleife gesetzt)
+upper_text_color = (int(255*brightness), 0, 0)  # Oben immer grün
 
 # Farben für die Rose (Farbtausch):
 rose_petals = (int(255*brightness), 0, 0)   # Rot
 rose_leaves = (0, int(255*brightness), 0)    # Grün
 
+smile_color = (int(255*brightness), 0, int(255*brightness))
+
 # ----------------------- Array für zufällige Nachrichten (Laufschrift) -----------------------------
-messages = ["ICH LIEBE DICH !", "HALLO WELT!", "SCHÖNER TAG!", "GUTEN MORGEN!", "VIEL SPASS!"]
+messages = ["ICH LIEBE DICH!", "HALLO WELT!", "SCHÖNER TAG!", "TE AMO!", "VIEL SPASS!"]
 
 # ----------------------- Font-Definitionen -----------------------------
 ziffern = {
@@ -73,6 +71,7 @@ letters = {
     "X": [[1,0,1],[0,1,0],[0,1,0],[0,1,0],[1,0,1]],
     "Y": [[1,0,1],[0,1,0],[0,1,0],[0,1,0],[0,1,0]],
     "Z": [[1,1,1],[0,0,1],[0,1,0],[1,0,0],[1,1,1]],
+    "!": [[0,1,0],[0,1,0],[0,1,0],[0,0,0],[0,1,0]],
     " ": [[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]
 }
 
@@ -123,6 +122,15 @@ upper_font[" "] = [
 
 # ----------------------- Obere Symbole für die Animation -----------------------------
 upper_symbols = {
+    "smile": [
+        [0,0,0,0,0,0,0],
+        [0,1,0,0,0,1,0],
+        [0,1,0,0,0,1,0],
+        [1,0,0,1,0,0,1],
+        [1,0,0,1,0,0,1],
+        [0,1,0,0,0,1,0],
+        [0,0,1,1,1,0,0]
+        ],
     "♥": [
         [0,1,0,0,0,1,0],
         [1,1,1,1,1,1,1],
@@ -153,12 +161,24 @@ upper_symbols = {
 }
 
 # ----------------------- Globale Variablen für Animation -----------------------------
+# Für Herz-Animationen
 heart_anim_x = 0
 heart_anim_y_offset = 1
 heart_anim_angle = 0
-last_heart_update = time.time()
+
+smile_anim_x = 0
+smile_anim_y_offset = 1
+smile_anim_angle = 0
+
+# Für Rosen-Animation
 rose_anim_x = 4
 rose_anim_y_offset = 1
+
+# Neue globale Variablen für den zentralen Animationstimer
+upper_anim_delay = 3000  # Verzögerung in Millisekunden (35,55 s)
+next_upper_update = time.ticks_ms() + upper_anim_delay
+# Variable, die speichert, welche Animation aktuell aktiv ist
+current_upper_anim = None
 
 # ----------------------- Hilfsfunktionen für Double Buffering -----------------------------
 def xy_to_index(x, y):
@@ -235,7 +255,7 @@ def zeichne_symbol(symbol, start_x, start_y):
             else:
                 set_pixel_frame(start_x + x, start_y + y, (0, 0, 0))
 
-# ----------------------- Angepasste Funktion für den oberen Text -----------------------------
+# ----------------------- Funktion für den oberen statischen Text -----------------------------
 def display_upper_text_frame(text):
     text = text.upper()[:6]
     text_matrix = create_text_matrix(text, upper_font, spacing=1, value=1)
@@ -250,7 +270,7 @@ def display_upper_text_frame(text):
             else:
                 set_pixel_frame(start_x + col, y_offset + row, (0, 0, 0))
 
-# ----------------------- Herz-Animation -----------------------------
+# ----------------------- Funktion zur Rotation (für die Animationen) -----------------------------
 def rotate_matrix(matrix, angle):
     height = len(matrix)
     width = len(matrix[0])
@@ -274,20 +294,21 @@ def rotate_matrix(matrix, angle):
                 new_matrix[y][x] = 0
     return new_matrix
 
-def display_upper_heart_anim_frame():
-    global heart_anim_x, heart_anim_y_offset, heart_anim_angle, last_heart_update
-    current = time.time()
-    if current - last_heart_update >= 0.5:
-        heart_anim_x = (heart_anim_x + 4) % 10
-        heart_anim_y_offset += random.choice([-1, 0, 1])
-        heart_anim_y_offset = max(0, min(heart_anim_y_offset, 2))
-        heart_anim_angle = (heart_anim_angle + 45) % 360
-        last_heart_update = current
-    # Zufällig eines der beiden Herzsymbole wählen:
-    if random.choice([True, False]):
-        heart = upper_symbols["♥"]
-    else:
-        heart = upper_symbols["♥2"]
+# ----------------------- Anzeige-Funktionen für obere Animation (nur Zeichnung) -----------------------------
+def display_upper_smile_anim_frame():
+    smile = upper_symbols["smile"]
+    rotated = rotate_matrix(smile, smile_anim_angle)
+    clear_region_frame(0, smile_anim_y_offset, 16, 7)
+    for y in range(7):
+        for x in range(7):
+            pos_x = smile_anim_x + x
+            pos_y = smile_anim_y_offset + y
+            if 0 <= pos_x < 16 and 0 <= pos_y < 9:
+                if rotated[y][x] == 1:
+                    set_pixel_frame(pos_x, pos_y, smile_color)
+                    
+def display_upper_heart1_anim_frame():
+    heart = upper_symbols["♥"]
     rotated = rotate_matrix(heart, heart_anim_angle)
     heart_color = (0, int(255 * brightness), 0)
     clear_region_frame(0, heart_anim_y_offset, 16, 7)
@@ -299,16 +320,20 @@ def display_upper_heart_anim_frame():
                 if rotated[y][x] == 1:
                     set_pixel_frame(pos_x, pos_y, heart_color)
 
-# ----------------------- Rose-Animation (ohne Rotation, nur Farbtausch) -----------------------------
+def display_upper_heart2_anim_frame():
+    heart = upper_symbols["♥2"]
+    rotated = rotate_matrix(heart, heart_anim_angle)
+    heart_color = (0, int(255 * brightness), 0)
+    clear_region_frame(0, heart_anim_y_offset, 16, 7)
+    for y in range(7):
+        for x in range(7):
+            pos_x = heart_anim_x + x
+            pos_y = heart_anim_y_offset + y
+            if 0 <= pos_x < 16 and 0 <= pos_y < 9:
+                if rotated[y][x] == 1:
+                    set_pixel_frame(pos_x, pos_y, heart_color)
+
 def display_upper_rose_anim_frame():
-    global rose_anim_x, rose_anim_y_offset, last_heart_update
-    current = time.time()
-    if current - last_heart_update >= 0.5:
-        rose_anim_x += random.choice([-1, 0, 1])
-        rose_anim_y_offset += random.choice([-1, 0, 1])
-        rose_anim_x = max(0, min(rose_anim_x, 9))
-        rose_anim_y_offset = max(0, min(rose_anim_y_offset, 2))
-        last_heart_update = current
     rose = upper_symbols["rose"]
     clear_region_frame(0, rose_anim_y_offset, 16, 7)
     for y in range(7):
@@ -481,16 +506,20 @@ def get_local_time():
     else:
         return t_std
 
-# ----------------------- Hauptschleife mit fester Frame-Rate -----------------------------
+# ----------------------- Hauptschleife -----------------------------
 FRAME_DELAY_MS = 33  # ca. 30 FPS
 
 def main():
-    global last_heart_update, show_rose, scroll_offset, lower_mode, last_minute, lower_combined_matrix, lower_scroll_max
+    global lower_mode, last_minute, scroll_offset, lower_combined_matrix, lower_scroll_max
+    global next_upper_update, current_upper_anim
+    global heart_anim_x, heart_anim_y_offset, heart_anim_angle, rose_anim_x, rose_anim_y_offset
+
     lower_mode = "static"
     last_minute = None
     scroll_offset = -16
     lower_combined_matrix = None
     lower_scroll_max = 0
+
     if "credentials.txt" in os.listdir():
         with open("credentials.txt", "r") as f:
             lines = f.readlines()
@@ -504,33 +533,51 @@ def main():
                 print("Zeit gesetzt:", time.localtime())
             except Exception as e:
                 print("Fehler beim Einstellen der Zeit:", e)
-            last_heart_update = time.time()
             while True:
                 clear_frame()
                 clear_region_frame(0, 0, 16, 9)
-                # Bestimme dynamisch den oberen Text basierend auf der aktuellen Zeit.
+                # Obere Anzeige: Bei exakten Viertelminuten wird statischer Text gezeigt,
+                # ansonsten soll die Animation angezeigt werden.
                 t = get_local_time()
-                # x als 12-Stunden-Wert: 0 bedeutet 12 AM, 1 = 1, …, 11 = 11
-                x = t[3] % 12  
+                x = t[3] % 12  # 12-Stunden-Wert (0 bedeutet 12, 1 = 1, ... 11 = 11)
                 current_minute = t[4]
-                if current_minute in [15, 30, 45] and x >= 0 and x < 12:
+                if current_minute in [15, 30, 45] and 0 <= x < 12:
                     if current_minute == 15:
                         dynamic_upper_text = "1/4" + str(x+1)
                     elif current_minute == 30:
                         dynamic_upper_text = "1/2" + str(x+1)
                     elif current_minute == 45:
                         dynamic_upper_text = "3/4" + str(x+1)
-                else:
-                    dynamic_upper_text = ""
-                
-                if dynamic_upper_text != "":
                     display_upper_text_frame(dynamic_upper_text)
                 else:
-                    if show_rose:
+                    # Aktualisiere den Animationszustand nur einmal alle upper_anim_delay Millisekunden
+                    current = time.ticks_ms()
+                    if time.ticks_diff(current, next_upper_update) >= 0:
+                        # Wähle zufällig die Animation und aktualisiere den Zustand
+                        current_upper_anim = random.choice(["heart1", "heart2", "rose", "smile"])
+                        if current_upper_anim in ["heart1", "heart2", "smile"]:
+                            heart_anim_x = (heart_anim_x + 1) % 10  # geringere Schrittweite
+                            heart_anim_y_offset += random.choice([-1, 0, 1])
+                            heart_anim_y_offset = max(0, min(heart_anim_y_offset, 2))
+                            # Setze den Winkel zufällig aus {0, 90, 180, -90}
+                            heart_anim_angle = random.choice([0, 90, 180, -90])
+                        elif current_upper_anim == "rose":
+                            rose_anim_x += random.choice([-1, 0, 1])
+                            rose_anim_y_offset += random.choice([-1, 0, 1])
+                            rose_anim_x = max(0, min(rose_anim_x, 9))
+                            rose_anim_y_offset = max(0, min(rose_anim_y_offset, 2))
+                        next_upper_update = current + upper_anim_delay
+                    # Anzeige der aktuell ausgewählten Animation
+                    if current_upper_anim == "heart1":
+                        display_upper_heart1_anim_frame()
+                    elif current_upper_anim == "heart2":
+                        display_upper_heart2_anim_frame()
+                    elif current_upper_anim == "rose":
                         display_upper_rose_anim_frame()
-                    else:
-                        display_upper_heart_anim_frame()
-                
+                    elif current_upper_anim == "smile":
+                        display_upper_smile_anim_frame()
+                        
+                    
                 # Unterer Bereich: Zeitanzeige / Laufschrift mit zufälliger Nachricht
                 current_time = get_local_time()
                 current_minute = current_time[4]
@@ -539,7 +586,6 @@ def main():
                     scroll_offset = -16
                     time_str = "{:02d}:{:02d}".format(current_time[3], current_time[4])
                     time_matrix = create_text_matrix(time_str, ziffern, spacing=1, value=1)
-                    # Zufällig einen Zusatztext aus messages wählen
                     appended_text = " " + random.choice(messages)
                     appended_matrix = create_text_matrix(appended_text, letters, spacing=1, value=2)
                     lower_combined_matrix = combine_matrices(time_matrix, appended_matrix, spacing=1)
