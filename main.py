@@ -97,6 +97,7 @@ upper_font["1"] = [
     [1],
     [1]
 ]
+'''
 upper_font["3"] = [
     [1,1],
     [0,1],
@@ -111,6 +112,7 @@ upper_font["4"] = [
     [0,1],
     [0,1]
 ]
+'''
 # Im oberen Bereich soll ein Leerzeichen nur 1x5 Pixel groß sein.
 upper_font[" "] = [
     [0],
@@ -123,9 +125,9 @@ upper_font[" "] = [
 # ----------------------- Obere Symbole für die Animation -----------------------------
 upper_symbols = {
     "smile": [
-        [0,1,0,0,0,1,0],
-        [1,0,0,0,0,0,1],
+        [0,0,0,0,0,0,0],
         [0,0,1,0,1,0,0],
+        [0,0,0,0,0,0,0],
         [1,0,0,1,0,0,1],
         [1,0,0,1,0,0,1],
         [0,1,0,0,0,1,0],
@@ -150,11 +152,11 @@ upper_symbols = {
         [0,0,0,1,0,0,0]
     ],
     "♥2": [
-        [0,1,0,0,0,1,0],
-        [1,1,1,1,1,1,1],
-        [1,1,0,0,0,1,1],
-        [1,1,0,0,0,1,1],
-        [0,1,1,0,1,1,0],
+        [0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,0],
+        [0,0,1,0,1,0,0],
+        [0,1,1,1,1,1,0],
+        [0,1,1,1,1,1,0],
         [0,0,1,1,1,0,0],
         [0,0,0,1,0,0,0]
     ],
@@ -319,7 +321,7 @@ def display_upper_smile_anim_frame():
 def display_upper_heart1_anim_frame():
     heart = upper_symbols["♥"]
     rotated = rotate_matrix(heart, heart_anim_angle)
-    heart_color = (0, int(255 * brightness), 0)
+    heart_color = (0, int(255 * brightness), int(255 * brightness))
     clear_region_frame(0, heart_anim_y_offset, 16, 7)
     for y in range(7):
         for x in range(7):
@@ -354,6 +356,24 @@ def display_upper_rose_anim_frame():
                     set_pixel_frame(pos_x, pos_y, rose_leaves)
                 elif rose[y][x] == 2:
                     set_pixel_frame(pos_x, pos_y, rose_petals)
+
+def display_upper_date_anim_frame():
+    # Hole das aktuelle Datum (Tag und Monat)
+    t = get_local_time()
+    # Formatierung: z. B. "31.12" (alternativ: "{:02d}.{:02d}.{:04d}" für Tag, Monat, Jahr)
+    date_str = "{:02d}.{:02d}".format(t[2], t[1])
+    # Erzeuge die Textmatrix mithilfe des vorhandenen Fonts
+    text_matrix = create_text_matrix(date_str, upper_font, spacing=1, value=1)
+    text_width = len(text_matrix[0])
+    # Zentriere horizontal (16 Spalten) und vertikal (Oberbereich Zeile 0–8)
+    start_x = max(0, (16 - text_width) // 2)
+    y_offset = (9 - 5) // 2  # da die Matrix 5 Zeilen hoch ist
+    for row in range(5):
+        for col in range(text_width):
+            if text_matrix[row][col] == 1:
+                set_pixel_frame(start_x + col, y_offset + row, upper_text_color)
+            else:
+                set_pixel_frame(start_x + col, y_offset + row, (0, 0, 0))
 
 # ----------------------- Unterer Bereich: Zeitanzeige / Laufschrift -----------------------------
 def display_lower_static_frame():
@@ -399,7 +419,11 @@ def connect_wifi(ssid, password):
         return True
     else:
         print("WLAN-Verbindung fehlgeschlagen.")
-        return False
+        print("WLAN-Verbindung fehlgeschlagen. Starte Hotspot für WLAN-Konfiguration...")
+        start_ap()
+        serve_config_page()
+        machine.reset()
+        #return False
 
 def start_ap():
     wap = network.WLAN(network.AP_IF)
@@ -563,7 +587,7 @@ def main():
                     current = time.ticks_ms()
                     if time.ticks_diff(current, next_upper_update) >= 0:
                         # Wähle zufällig die Animation und aktualisiere den Zustand
-                        current_upper_anim = random.choice(["heart1", "heart2", "rose", "smile"])
+                        current_upper_anim = random.choice(["heart1", "heart2", "rose", "smile", "date"])
                         if current_upper_anim in ["heart1", "heart2", "smile"]:
                             heart_anim_x = (heart_anim_x + 1) % 10  # geringere Schrittweite
                             heart_anim_y_offset += random.choice([-1, 0, 1])
@@ -585,6 +609,8 @@ def main():
                         display_upper_rose_anim_frame()
                     elif current_upper_anim == "smile":
                         display_upper_smile_anim_frame()
+                    elif current_upper_anim == "date":
+                        display_upper_date_anim_frame()
                         
                     
                 # Unterer Bereich: Zeitanzeige / Laufschrift mit zufälliger Nachricht
@@ -606,7 +632,7 @@ def main():
                 else:
                     display_lower_static_frame()
                 commit_frame()
-                time.sleep(0.1)
+                time.sleep(0.07)
                 if lower_mode == "scrolling" and scroll_offset > lower_scroll_max:
                     lower_mode = "static"
         else:
