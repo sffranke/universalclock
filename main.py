@@ -8,6 +8,10 @@ import urequests
 sunrise_minutes = None
 sunset_minutes = None
 
+# Dynamischer Helligkeitsfaktor, 1x pro Minute/bei Bedarf aktualisieren
+current_brightness_scale = 1.0
+last_scale_minute = -1
+
 def update_sun_times(lat, lon):
     global sunrise_minutes, sunset_minutes
     try:
@@ -45,6 +49,27 @@ def get_current_brightness():
     else:
         return brightness * 0.5  # Nacht (sanft, nicht quasi aus)
 
+def refresh_brightness_scale():
+    """Berechnet current_brightness_scale ohne pro Pixel time.gmtime() aufzurufen."""
+    global current_brightness_scale, last_scale_minute
+    # aktuelle Minute (UTC) bestimmen
+    t = time.gmtime()
+    minute_id = t[3] * 60 + t[4]  # 0..1439
+
+    # Nur neu berechnen, wenn Minute gewechselt hat
+    if minute_id == last_scale_minute:
+        return
+
+    # Falls sunrise/sunset noch nicht da: Fallback
+    if sunrise_minutes is None or sunset_minutes is None:
+        current_brightness_scale = 1.0
+    else:
+        if sunrise_minutes <= minute_id <= sunset_minutes:
+            current_brightness_scale = 1.0               # Tag
+        else:
+            current_brightness_scale = 0.5               # Nacht
+
+    last_scale_minute = minute_id
 ### SIMULATION und Testzeit ###
 SIMULATE_TIME = False  # Für Tests True, sonst False
 SIMULATED_TIME = (2025, 4, 7, 2, 0, 3, 0, 97)
@@ -256,16 +281,14 @@ def xy_to_index(x, y):
         return y * 16 + x
 
 def set_pixel_frame(x, y, farbe):
-    """Dynamische Helligkeit anwenden (Tag/Nacht) ohne dein Farbschema zu ändern."""
+    """Schnell: skaliert nur noch mit dem vorab berechneten Faktor."""
     if 0 <= x < 16 and 0 <= y < 16:
         index = xy_to_index(x, y)
-        # skaliere relativ zur ursprünglichen (statisch eingerechneten) brightness
-        scale = get_current_brightness() / brightness
+        scale = current_brightness_scale  # kein time.gmtime() mehr hier!
         r, g, b = farbe
         farbe_dyn = (int(r*scale), int(g*scale), int(b*scale))
         global frame
         frame[index] = farbe_dyn
-
 def clear_frame():
     global frame
     frame = led_state.copy()
@@ -739,6 +762,7 @@ def main():
                 clear_frame()
                 clear_region_frame(0, 0, 16, 9)
                 t = get_local_time()
+                refresh_brightness_scale()
 
                 # täglicher NTP-Sync um 03:00
                 if t[3] == 3 and t[4] == 0 and t[2] != last_ntp_update_day:
