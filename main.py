@@ -1,14 +1,16 @@
-import network, ntptime, socket, os, time, machine, math, random
-ntptime.host = "de.pool.ntp.org"
+# ========= LED-Uhr 16x16 – stabilisierte Version (kein Audio) =========
+import network, ntptime, os, time, machine, math, random, gc
+import usocket as socket
 from neopixel import Neopixel
-
 import urequests
+
+ntptime.host = "de.pool.ntp.org"
 
 # ---- Sonnenzeiten (UTC-Minuten) ----
 sunrise_minutes = None
 sunset_minutes = None
 
-# Dynamischer Helligkeitsfaktor, 1x pro Minute/bei Bedarf aktualisieren
+# Dynamischer Helligkeitsfaktor (einmal pro Minute aktualisieren)
 current_brightness_scale = 1.0
 last_scale_minute = -1
 
@@ -21,9 +23,8 @@ def update_sun_times(lat, lon):
         r.close()
 
         def to_minutes(timestr):
-            # z.B. "2025-08-15T05:43:00+00:00"
-            h = int(timestr[11:13])
-            m = int(timestr[14:16])
+            # "YYYY-MM-DDTHH:MM:SS+00:00"
+            h = int(timestr[11:13]); m = int(timestr[14:16])
             return h * 60 + m
 
         sunrise_minutes = to_minutes(data["sunrise"])
@@ -35,50 +36,36 @@ def update_sun_times(lat, lon):
         print("Fehler beim Laden der Sonnenzeiten:", e)
 
 def get_current_brightness():
-    """Tag: brightness, Nacht: 20% davon (dynamische Skalierung)."""
+    # nur noch als Fallback verwendet
     global brightness, sunrise_minutes, sunset_minutes
     if sunrise_minutes is None or sunset_minutes is None:
-        return brightness  # Fallback bis Daten da sind
-
-    # aktuelle Zeit in UTC Minuten
-    t = time.gmtime()  # NTP setzt UTC
+        return brightness
+    t = time.gmtime()
     now_min = t[3] * 60 + t[4]
-
-    if sunrise_minutes <= now_min <= sunset_minutes:
-        return brightness  # Tag
-    else:
-        return brightness * 0.5  # Nacht (sanft, nicht quasi aus)
+    return brightness if (sunrise_minutes <= now_min <= sunset_minutes) else (brightness * 0.5)
 
 def refresh_brightness_scale():
-    """Berechnet current_brightness_scale ohne pro Pixel time.gmtime() aufzurufen."""
+    """Minütlich Helligkeitsskalierung aktualisieren (spart time.gmtime() pro Pixel)."""
     global current_brightness_scale, last_scale_minute
-    # aktuelle Minute (UTC) bestimmen
     t = time.gmtime()
-    minute_id = t[3] * 60 + t[4]  # 0..1439
-
-    # Nur neu berechnen, wenn Minute gewechselt hat
+    minute_id = t[3] * 60 + t[4]
     if minute_id == last_scale_minute:
         return
-
-    # Falls sunrise/sunset noch nicht da: Fallback
     if sunrise_minutes is None or sunset_minutes is None:
         current_brightness_scale = 1.0
     else:
-        if sunrise_minutes <= minute_id <= sunset_minutes:
-            current_brightness_scale = 1.0               # Tag
-        else:
-            current_brightness_scale = 0.5               # Nacht
-
+        current_brightness_scale = 1.0 if (sunrise_minutes <= minute_id <= sunset_minutes) else 0.5
     last_scale_minute = minute_id
+
 ### SIMULATION und Testzeit ###
-SIMULATE_TIME = False  # Für Tests True, sonst False
+SIMULATE_TIME = False
 SIMULATED_TIME = (2025, 4, 7, 2, 0, 3, 0, 97)
 last_cuckoo_hour = -1
 
 ### Neopixel Setup (16×16 LED-Matrix) ###
-anzahl_LEDs = 256         # 16x16 LEDs
-pin = 1                   # z.B. GP2 des Pico W
-pixels = Neopixel(anzahl_LEDs, 1, pin)
+anzahl_LEDs = 256
+pin = 1
+pixels = Neopixel(anzahl_LEDs, 1, pin)  # ggf. Modus "GRB" o.ä. je nach Treiber
 
 ### Double Buffering ###
 led_state = [(0, 0, 0) for _ in range(anzahl_LEDs)]
@@ -86,22 +73,19 @@ frame = [(0, 0, 0) for _ in range(anzahl_LEDs)]
 
 ### Einstellungen ###
 brightness = 0.04
-base_color = (0, 0, 100)  # Basisfarbe (für den Zeitteil)
-text_farbe = (int(base_color[0]*brightness),
-              int(base_color[1]*brightness),
-              int(base_color[2]*brightness))
+base_color = (0, 0, 100)
+text_farbe = (int(base_color[0]*brightness), int(base_color[1]*brightness), int(base_color[2]*brightness))
 red_text = (0, int(255*brightness), 0)
-upper_text_color = (int(255*brightness), 0, 0)  # Im oberen Bereich z. B. rot
+upper_text_color = (int(255*brightness), 0, 0)
 
-# Farben für die Rose (Farbtausch)
-rose_petals = (int(255*brightness), 0, 0)    # Rot
-rose_leaves = (0, int(255*brightness), 0)     # Grün
+# Farben für die Rose
+rose_petals = (int(255*brightness), 0, 0)
+rose_leaves = (0, int(255*brightness), 0)
 smile_color = (int(255*brightness), 0, int(255*brightness))
 
 def getoi():
     t = get_local_time()
     hour = t[3]
-    print(hour)
     if 6 <= hour < 12:
         return "BOM DIA!"
     elif 12 <= hour < 18:
@@ -109,12 +93,8 @@ def getoi():
     else:
         return "BOA NOITE"
 
-### Nachrichten (für die Lauftextanzeige im unteren Bereich) ###
-messages = [
-    "ICH LIEBE DICH!",
-    getoi,         # Funktion als Objekt übergeben
-    "TE AMO!",
-]
+### Nachrichten ###
+messages = ["ICH LIEBE DICH!", getoi, "TE AMO!", "CARAMBA!"]
 
 ### Font-Definitionen ###
 ziffern = {
@@ -131,7 +111,6 @@ ziffern = {
     ":": [[0,0,0],[0,1,0],[0,0,0],[0,1,0],[0,0,0]],
     " ": [[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]
 }
-
 letters = {
     "A": [[0,1,0],[1,0,1],[1,1,1],[1,0,1],[1,0,1]],
     "B": [[1,1,0],[1,0,1],[1,1,0],[1,0,1],[1,1,0]],
@@ -162,31 +141,13 @@ letters = {
     "!": [[0,1,0],[0,1,0],[0,1,0],[0,0,0],[0,1,0]],
     " ": [[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]
 }
-
-# Kombiniertes Font-Dictionary für den oberen Bereich
 upper_font = {}
-for key, matrix in letters.items():
-    upper_font[key] = matrix
-for key, matrix in ziffern.items():
-    upper_font[key] = matrix
+for k,v in letters.items(): upper_font[k] = v
+for k,v in ziffern.items(): upper_font[k] = v
 if "/" not in upper_font:
-    upper_font["/"] = [
-               [0,0,0],
-               [0,0,1],
-               [0,1,0],
-               [1,0,0],
-               [0,0,0]
-    ]
-upper_font["1"] = [
-    [0,1],
-    [1,1],
-    [0,1],
-    [0,1],
-    [0,1]
-]
-upper_font[" "] = [
-    [0],[0],[0],[0],[0]
-]
+    upper_font["/"] = [[0,0,0],[0,0,1],[0,1,0],[1,0,0],[0,0,0]]
+upper_font["1"] = [[0,1],[1,1],[0,1],[0,1],[0,1]]
+upper_font[" "] = [[0],[0],[0],[0],[0]]
 
 # Obere Symbole
 upper_symbols = {
@@ -246,17 +207,17 @@ upper_symbols["cuckoo"] = [
     [0,0,0,1,0,0,0]
 ]
 
-# Kuckuck-Symbol – 9 Pixel hoch und 16 Pixel breit
+# Kuckuck-Symbol groß (9x16)
 kuckuck = [
-    [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-    [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-    [2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-    [2, 2, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-    [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-    [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-    [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
-    [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]
+    [0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0],
+    [0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+    [2,2,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+    [2,2,1,3,1,1,1,1,1,1,1,1,1,1,0,0],
+    [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+    [0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0],
+    [0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0],
+    [0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0]
 ]
 
 # Globale Variablen für Animationen
@@ -273,22 +234,27 @@ upper_anim_delay = 3000
 next_upper_update = time.ticks_ms() + upper_anim_delay
 current_upper_anim = None
 
+# --- NICHT BLOCKIERENDER KUCKUCK (kein Audio, kein sleep) ---
+cuckoo_pending_toggles = 0     # wie viele Umschaltvorgänge noch ausstehen
+cuckoo_state_on = False        # zeigt gerade?
+cuckoo_next_toggle_ms = 0      # Zeitpunkt der nächsten Umschaltung
+CUCKOO_TOGGLE_INTERVAL = 400   # ms an/aus
+
 # ---- Buffer/Zeichenroutinen ----
 def xy_to_index(x, y):
+    # Serpentin-Mapping (wie in deinem Code)
     if y % 2 == 0:
         return y * 16 + (15 - x)
     else:
         return y * 16 + x
 
 def set_pixel_frame(x, y, farbe):
-    """Schnell: skaliert nur noch mit dem vorab berechneten Faktor."""
     if 0 <= x < 16 and 0 <= y < 16:
         index = xy_to_index(x, y)
-        scale = current_brightness_scale  # kein time.gmtime() mehr hier!
+        scale = current_brightness_scale
         r, g, b = farbe
-        farbe_dyn = (int(r*scale), int(g*scale), int(b*scale))
-        global frame
-        frame[index] = farbe_dyn
+        frame[index] = (int(r*scale), int(g*scale), int(b*scale))
+
 def clear_frame():
     global frame
     frame = led_state.copy()
@@ -460,30 +426,15 @@ def display_upper_date_anim_frame():
                 set_pixel_frame(start_x + col, y_offset + row, (0, 0, 0))
 
 def display_german_flag():
-    # Farben im vorhandenen (GRB-)Schema:
-    # Schwarz, Rot, Gold/Gelb
-    black = (2, 2, 2)
+    # Schwarz, Rot, Gold (GRB-Scaling beachtet)
+    black = (1, 1, 2)  # leichtes Glimmen, nicht komplett 0
     red   = (0, int(255*brightness), 0)
     gold  = (int(255*brightness), int(255*brightness), 0)
-
-    height = 9
-    width = 16
-    stripe_h = height // 3  # 3 Pixel pro Streifen (9 Zeilen)
-
+    height = 9; width = 16; stripe_h = height // 3
     for y in range(height):
-        # oberes Drittel: schwarz
-        if y < stripe_h:
-            color = black
-        # mittleres Drittel: rot
-        elif y < 2 * stripe_h:
-            color = red
-        # unteres Drittel: gold
-        else:
-            color = gold
-
+        color = black if y < stripe_h else (red if y < 2*stripe_h else gold)
         for x in range(width):
             set_pixel_frame(x, y, color)
-
 
 def display_brazil_flag():
     green  = (int(255*brightness), 0, 0)
@@ -511,7 +462,6 @@ def display_upper_cuckoo_frame():
         for x in range(len(cuckoo[y])):
             if cuckoo[y][x] == 1:
                 set_pixel_frame(offset_x + x, offset_y + y, brown_color)
-    #commit_frame()
 
 def display_upper_cuckoo_frame_big():
     clear_region_frame(0, 0, 16, 9)
@@ -525,20 +475,6 @@ def display_upper_cuckoo_frame_big():
             elif val == 2: set_pixel_frame(x, y, beak_color)
             elif val == 3: set_pixel_frame(x, y, eye_color)
             else: set_pixel_frame(x, y, (0, 0, 0))
-    #commit_frame()
-
-# Vogelkopf-Symbol (9 Zeilen hoch, 16 Spalten breit)
-vogelkopf = [
-    [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-    [2, 2, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-    [2, 2, 0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
-    [2, 2, 0, 0, 1, 1, 1, 1, 3, 1, 1, 1, 1, 0, 0, 0],
-    [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
-    [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
-    [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0]
-]
 
 def display_vogelkopf():
     clear_region_frame(0, 0, 16, 9)
@@ -552,24 +488,6 @@ def display_vogelkopf():
             elif v == 2: set_pixel_frame(x, y, beak_color)
             elif v == 3: set_pixel_frame(x, y, eye_color)
             else: set_pixel_frame(x, y, (0, 0, 0))
-    #commit_frame()
-
-# ---- Audio ----
-import array
-def play_cuckoo_sound():
-    pwm = machine.PWM(machine.Pin(3))
-    pwm.freq(125000)
-    pwm.duty_u16(0)
-    with open("kuckuck.raw", "rb") as f:
-        data = f.read()
-    samples = array.array("B", data)
-    for s in samples:
-        centered = s - 128
-        scaled   = centered << 8
-        duty     = scaled + 32768
-        pwm.duty_u16(duty)
-        time.sleep_us(125)  # 8 kHz
-    pwm.deinit()
 
 # ---- Unterer Bereich ----
 def display_lower_static_frame():
@@ -612,45 +530,66 @@ def connect_wifi(ssid, password):
         return True
     else:
         print("WLAN-Verbindung fehlgeschlagen.")
-        print("WLAN-Verbindung fehlgeschlagen. Starte Hotspot für WLAN-Konfiguration...")
+        print("Starte Hotspot für WLAN-Konfiguration...")
         start_ap()
         serve_config_page()
         machine.reset()
 
 def start_ap():
     wap = network.WLAN(network.AP_IF)
-    wap.config(essid='PicoSetup', password='12345678')
     wap.active(True)
-    print(wap.ifconfig())
+    wap.config(essid='PicoSetup', password='12345678')
+    print("AP:", wap.ifconfig())
     return wap
 
 def serve_config_page():
-    addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
-    s = socket.socket(); s.bind(addr); s.listen(1)
-    print("Warte auf Konfigurationsanfrage unter", addr)
+    # nicht-blockierender Mini-HTTP-Server
+    s = socket.socket()
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    except:
+        pass
+    s.bind(('0.0.0.0', 80))
+    s.listen(1)
+    s.settimeout(1)  # accept max. 1 s blocken
+    print("Warte auf Konfigurationsanfrage auf Port 80...")
+
     while True:
-        cl, addr = s.accept()
-        print('Client connected from', addr)
-        request = cl.recv(1024).decode()
-        if request:
+        try:
+            cl, addr = s.accept()
+        except OSError:
+            # kein Client -> Schleife weiter, nichts hängt fest
+            continue
+        try:
+            cl.settimeout(5)  # Lese-/Schreib-Timeout pro Client
+            request = cl.recv(1024).decode()
+            if not request:
+                continue
+
             if "GET /set?" in request:
+                # Primitive Query-String-Auswertung
                 try:
                     qs = request.split("GET /set?", 1)[1].split(" ", 1)[0]
                     params = qs.split("&")
                     ssid = ""; password = ""
                     for p in params:
-                        k, v = p.split("=")
-                        if k == "ssid": ssid = v
-                        elif k == "password": password = v
+                        if "=" in p:
+                            k, v = p.split("=", 1)
+                            if k == "ssid": ssid = v
+                            elif k == "password": password = v
                     ssid = ssid.replace('+', ' ')
                     password = password.replace('+', ' ')
                     with open("credentials.txt", "w") as f:
                         f.write(ssid + "\n" + password + "\n")
-                    response = ("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
-                                "<html><body><h2>Credentials saved. Please restart the Pico.</h2></body></html>")
-                    cl.send(response); cl.close()
+                    resp = ("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
+                            "<html><body><h2>Credentials saved. Please restart the Pico.</h2></body></html>")
+                    cl.send(resp)
                     print("Zugangsdaten gespeichert, bitte Pico neustarten.")
-                    s.close()
+                    # Socket sauber schließen und zurück
+                    try: cl.close()
+                    except: pass
+                    try: s.close()
+                    except: pass
                     break
                 except Exception as e:
                     print("Fehler beim Verarbeiten:", e)
@@ -691,7 +630,12 @@ Connection: close\r
 </body>
 </html>
 """
-                cl.send(html); cl.close()
+                cl.send(html)
+        except Exception as e:
+            print("HTTP-Fehler:", e)
+        finally:
+            try: cl.close()
+            except: pass
     return
 
 # ---- Zeit/DST ----
@@ -730,12 +674,14 @@ def get_local_time():
 
 FRAME_DELAY_MS = 33
 last_ntp_update_day = -1
+last_gc_ms = time.ticks_ms()
 
 def main():
     global lower_mode, last_minute, scroll_offset, lower_combined_matrix, lower_scroll_max
     global next_upper_update, current_upper_anim
     global heart_anim_x, heart_anim_y_offset, heart_anim_angle, rose_anim_x, rose_anim_y_offset
     global last_ntp_update_day, last_cuckoo_hour
+    global cuckoo_pending_toggles, cuckoo_state_on, cuckoo_next_toggle_ms, last_gc_ms
 
     lower_mode = "static"
     last_minute = None
@@ -748,7 +694,7 @@ def main():
             lines = f.readlines()
             ssid = lines[0].strip()
             password = lines[1].strip()
-        print("Lade Zugangsdaten:", ssid, password)
+        print("Lade Zugangsdaten:", ssid, "*"*len(password))
         if connect_wifi(ssid, password):
             try:
                 print("Hole Zeit vom NTP-Server...")
@@ -764,7 +710,13 @@ def main():
                 t = get_local_time()
                 refresh_brightness_scale()
 
-                # täglicher NTP-Sync um 03:00
+                # GC gelegentlich manuell anstoßen, um Mikro-Pausen zu verteilen
+                now_ms = time.ticks_ms()
+                if time.ticks_diff(now_ms, last_gc_ms) > 1000:
+                    gc.collect()
+                    last_gc_ms = now_ms
+
+                # täglicher NTP-Sync um 03:00 (robust)
                 if t[3] == 3 and t[4] == 0 and t[2] != last_ntp_update_day:
                     try:
                         ntptime.settime()
@@ -777,20 +729,29 @@ def main():
                 if t[3] == 3 and t[4] == 1 and t[2] == last_ntp_update_day:
                     update_sun_times(49.444, 7.768)
 
-                # Kuckuck zur vollen Stunde (Sek. 2..4)
+                # Kuckuck zur vollen Stunde (NICHT blockierend)
                 if t[4] == 0 and 2 <= t[5] <= 4:
                     if last_cuckoo_hour != t[3]:
                         last_cuckoo_hour = t[3]
                         hour_12 = t[3] % 12
                         if hour_12 == 0: hour_12 = 12
-                        for _ in range(hour_12):
-                            display_upper_cuckoo_frame()
-                            # display_upper_cuckoo_frame_big()
-                            # display_vogelkopf()
-                            play_cuckoo_sound()
-                            time.sleep(0.5)
-                            clear_region_frame(0, 0, 16, 9)
-                            commit_frame()
+                        # Für jeden "Ruf" zwei Toggles (an/aus):
+                        cuckoo_pending_toggles = hour_12 * 2
+                        cuckoo_state_on = False
+                        cuckoo_next_toggle_ms = time.ticks_ms()
+
+                # Cuckoo-State-Maschine: alle 400ms an/aus schalten
+                if cuckoo_pending_toggles > 0 and time.ticks_diff(time.ticks_ms(), cuckoo_next_toggle_ms) >= 0:
+                    if cuckoo_state_on:
+                        # aus
+                        clear_region_frame(0, 0, 16, 9)
+                        cuckoo_state_on = False
+                    else:
+                        # an (kleines Symbol)
+                        display_upper_cuckoo_frame()
+                        cuckoo_state_on = True
+                    cuckoo_pending_toggles -= 1
+                    cuckoo_next_toggle_ms = time.ticks_add(time.ticks_ms(), CUCKOO_TOGGLE_INTERVAL)
 
                 # Oberer Bereich: Viertel-/Halb-/Dreiviertel-Anzeige oder Animation
                 x = t[3] % 12
@@ -857,7 +818,7 @@ def main():
                     display_lower_static_frame()
 
                 commit_frame()
-                time.sleep(0.07)
+                time.sleep_ms(70)
 
                 if lower_mode == "scrolling" and scroll_offset > lower_scroll_max:
                     lower_mode = "static"
@@ -868,6 +829,19 @@ def main():
         start_ap()
         serve_config_page()
         machine.reset()
+
+# Vogelkopf (für Vollständigkeit)
+vogelkopf = [
+    [0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0],
+    [2,2,2,0,1,1,1,1,1,1,1,1,0,0,0,0],
+    [2,2,0,2,1,1,1,1,1,1,1,1,1,0,0,0],
+    [2,2,0,0,1,1,1,1,3,1,1,1,1,0,0,0],
+    [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,1,1,1,1,1,1,1,1,1,1,1,0,0],
+    [0,0,0,0,1,1,1,1,1,1,1,1,1,0,0,0],
+    [0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0]
+]
 
 main()
 
