@@ -427,7 +427,7 @@ def display_upper_date_anim_frame():
 
 def display_german_flag():
     # Schwarz, Rot, Gold (GRB-Scaling beachtet)
-    black = (1, 1, 2)  # leichtes Glimmen, nicht komplett 0
+    black = (2, 2, 2)  # leichtes Glimmen, nicht komplett 0
     red   = (0, int(255*brightness), 0)
     gold  = (int(255*brightness), int(255*brightness), 0)
     height = 9; width = 16; stripe_h = height // 3
@@ -660,8 +660,9 @@ def is_dst(t):
         return day > dst_start_day or (day == dst_start_day and hour >= 2)
     elif month == 10:
         dst_end_day = last_sunday(year, 10)
-        return not (day < dst_end_day or (day == dst_end_day and hour < 3))
-
+        #return not (day < dst_end_day or (day == dst_end_day and hour < 3))
+        return (day < dst_end_day) or (day == dst_end_day and hour < 3)
+    
 def get_local_time():
     if SIMULATE_TIME:
         return SIMULATED_TIME
